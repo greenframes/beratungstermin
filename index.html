@@ -1,0 +1,847 @@
+const STORAGE_KEY = "cari_messe_anmeldung_v2";
+const SIGNATURE_KEY = `${STORAGE_KEY}_signature`;
+
+const state = {
+  index: 0,
+  sigHasInk: false,
+  sigCanvas: null,
+  sigCtx: null,
+  drawing: false,
+  data: {
+    vorname: "",
+    nachname: "",
+    strasse: "",
+    hausnr: "",
+    plz: "",
+    ort: "",
+    telefon: "",
+    gebdatum: "",
+    email: "",
+    i_praktikum: false,
+    i_ausbildung: false,
+    i_weiterbildung: false,
+    ausbildungsziel: "",
+    weiterbildung_text: "",
+    abschluss: "",
+    ausbildung: "",
+    beruf: "",
+    termin_datum: "",
+    termin_uhr: "",
+    berater: "",
+    ds_ack: false
+  }
+};
+
+const $ = (id) => document.getElementById(id);
+const answerArea = $("answerArea");
+const btnBack = $("btnBack");
+const btnNext = $("btnNext");
+const toast = $("toast");
+const toastOk = $("toastOk");
+
+const steps = [
+  {
+    id: "welcome",
+    kicker: "",
+    title: "Willkommen am Messestand",
+    mood: "Cari ist bereit.",
+    speech: "Schön, dass du da bist. Lass uns das Formular asufüllen!",
+    prompt: "Jetzt Beratungstermin anfragen",
+    type: "intro",
+    nextLabel: "Start"
+  },
+  {
+    id: "name",
+    kicker: "Kontaktdaten",
+    title: "Wie heißt du?",
+    mood: "Erster Kontakt.",
+    speech: "Wir starten einfach: Vorname und Nachname reichen für diesen Punkt.",
+    prompt: "Bitte gib deinen Namen ein.",
+    type: "fields",
+    fields: [
+      { key: "vorname", label: "Vorname", autocomplete: "given-name", required: true },
+      { key: "nachname", label: "Nachname", autocomplete: "family-name", required: true }
+    ]
+  },
+  {
+    id: "contact",
+    kicker: "Kontakt",
+    title: "Wie erreichen wir dich?",
+    mood: "Fast wie Chatten.",
+    speech: "Telefon oder E-Mail reichen, am besten natürlich beides.",
+    prompt: "Trage deine Telefonnummer und E-Mail-Adresse ein.",
+    type: "fields",
+    fields: [
+      { key: "telefon", label: "Telefon", inputmode: "tel", autocomplete: "tel" },
+      { key: "email", label: "E-Mail", inputmode: "email", autocomplete: "email" }
+    ],
+    validate: () => Boolean(state.data.telefon.trim() || state.data.email.trim()),
+    error: "Bitte gib mindestens Telefon oder E-Mail an."
+  },
+  {
+    id: "address",
+    kicker: "Adresse",
+    title: "Wo wohnst du?",
+    mood: "Ich sortiere die Zeilen.",
+    speech: "Die Adresse kommt später sauber in den Beratungsbogen.",
+    prompt: "Bitte ergänze deine Adresse.",
+    type: "fields",
+    fields: [
+      { key: "strasse", label: "Straße", autocomplete: "address-line1" },
+      { key: "hausnr", label: "Hausnummer" },
+      { key: "plz", label: "PLZ", inputmode: "numeric", autocomplete: "postal-code" },
+      { key: "ort", label: "Ort", autocomplete: "address-level2" }
+    ]
+  },
+  {
+    id: "birth",
+    kicker: "Persönliches",
+    title: "Geburtsdatum",
+    mood: "Nur noch ein Basisfeld.",
+    speech: "Wenn du es gerade nicht weißt oder nicht angeben möchtest, kann unsere Beratung es später ergänzen.",
+    prompt: "Wann bist du geboren?",
+    type: "fields",
+    single: true,
+    fields: [
+      { key: "gebdatum", label: "Geburtsdatum", placeholder: "TT.MM.JJJJ", inputmode: "numeric" }
+    ]
+  },
+  {
+    id: "interest",
+    kicker: "Interesse",
+    title: "Wofür interessierst du dich?",
+    mood: "Jetzt wird es spannend.",
+    speech: "Du kannst mehrere Punkte auswählen. Wenn Ausbildung dabei ist, frage ich gleich noch genauer nach.",
+    prompt: "Wähle aus, was für dich interessant ist.",
+    type: "multi",
+    options: [
+      { key: "i_praktikum", label: "Praktikum", hint: "Erst reinschnuppern" },
+      { key: "i_ausbildung", label: "Ausbildung", hint: "Beruflich einsteigen" },
+      { key: "i_weiterbildung", label: "Weiterbildung", hint: "Vorhandenes Wissen erweitern" }
+    ],
+    validate: () => state.data.i_praktikum || state.data.i_ausbildung || state.data.i_weiterbildung,
+    error: "Bitte wähle mindestens ein Interesse aus."
+  },
+  {
+    id: "educationTarget",
+    kicker: "Ausbildung",
+    title: "Welche Ausbildung passt?",
+    mood: "Gezielte Auswahl.",
+    speech: "Weil du Ausbildung ausgewählt hast, ordnen wir direkt ein, welcher Weg dich interessiert.",
+    prompt: "Geht es eher um Pflegefachfrau/Pflegefachmann oder Pflegefachassistenz?",
+    type: "single",
+    condition: () => state.data.i_ausbildung,
+    key: "ausbildungsziel",
+    options: [
+      { value: "Pflegefachfrau / Pflegefachmann", label: "Pflegefachfrau / Pflegefachmann", hint: "Generalistische Pflegeausbildung" },
+      { value: "Pflegefachassistenz", label: "Pflegefachassistenz", hint: "Assistenz in der Pflege" },
+      { value: "Noch unsicher", label: "Noch unsicher", hint: "In der Beratung klären" }
+    ],
+    validate: () => Boolean(state.data.ausbildungsziel),
+    error: "Bitte wähle einen Ausbildungsweg aus."
+  },
+  {
+    id: "trainingText",
+    kicker: "Weiterbildung",
+    title: "Welche Weiterbildung?",
+    mood: "Ich halte die Details fest.",
+    speech: "Wenn du schon ein konkretes Thema hast, trag es kurz ein.",
+    prompt: "Welche Weiterbildung interessiert dich?",
+    type: "fields",
+    single: true,
+    condition: () => state.data.i_weiterbildung,
+    fields: [
+      { key: "weiterbildung_text", label: "Weiterbildung", placeholder: "z. B. Praxisanleitung, Behandlungspflege ..." }
+    ]
+  },
+  {
+    id: "background",
+    kicker: "Werdegang",
+    title: "Was bringst du mit?",
+    mood: "Das hilft der Beratung.",
+    speech: "Kurz und knapp reicht. Diese Angaben helfen uns, direkt die richtigen nächsten Schritte zu besprechen.",
+    prompt: "Erzähl uns kurz etwas zu deinem bisherigen Werdegang.",
+    type: "fields",
+    fields: [
+      { key: "abschluss", label: "Schulabschluss" },
+      { key: "ausbildung", label: "Bisherige Ausbildung" },
+      { key: "beruf", label: "Berufserfahrung" }
+    ]
+  },
+  {
+    id: "appointment",
+    kicker: "Beratung",
+    title: "Termin notieren",
+    mood: "Optional für das Team.",
+    speech: "Falls direkt am Stand ein Beratungstermin vereinbart wird, kann er hier eingetragen werden.",
+    prompt: "Soll ein persönlicher Beratungstermin festgehalten werden?",
+    type: "fields",
+    fields: [
+      { key: "termin_datum", label: "Datum", placeholder: "TT.MM.JJJJ", inputmode: "numeric" },
+      { key: "termin_uhr", label: "Uhrzeit", placeholder: "HH:MM", inputmode: "numeric" },
+      { key: "berater", label: "Berater/in" }
+    ]
+  },
+  {
+    id: "privacy",
+    kicker: "Datenschutz",
+    title: "Einverständnis",
+    mood: "Ein wichtiger Haken.",
+    speech: "Damit wir deine Angaben für die Beratung nutzen dürfen, brauchen wir deine Zustimmung.",
+    prompt: "Bitte bestätige den Datenschutzhinweis.",
+    type: "single",
+    key: "ds_ack",
+    options: [
+      { value: true, label: "Ich akzeptiere meine Datenschutzrechte gemäß Kapitel III (Art. 12 ff.) der DS-GVO.", hint: "Erforderlich für die Speicherung" }
+    ],
+    validate: () => state.data.ds_ack === true,
+    error: "Bitte bestätige den Datenschutz."
+  },
+  {
+    id: "signature",
+    kicker: "Unterschrift",
+    title: "Bitte unterschreiben",
+    mood: "Mit Finger oder Apple Pencil.",
+    speech: "Die Unterschrift wird lokal gespeichert und in die PDF übernommen.",
+    prompt: "Unterschreibe im Feld.",
+    type: "signature",
+    validate: () => state.sigHasInk,
+    error: "Bitte unterschreibe im Feld."
+  },
+  {
+    id: "review",
+    kicker: "Fertig",
+    title: "Alles bereit",
+    mood: "Cari erstellt die PDF.",
+    speech: "Wenn alles stimmt, starte ich den PDF-Download. Auf dem iPad erscheint danach der Speichern-Dialog.",
+    prompt: "Bitte prüfe die Angaben kurz.",
+    type: "review",
+    nextLabel: "PDF speichern"
+  }
+];
+
+function visibleSteps(){
+  return steps.filter((step) => !step.condition || step.condition());
+}
+
+function currentStep(){
+  const list = visibleSteps();
+  if (state.index > list.length - 1) state.index = list.length - 1;
+  return list[state.index];
+}
+
+function saveDraft(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+  }catch(e){}
+}
+
+function loadDraft(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) Object.assign(state.data, JSON.parse(raw));
+    const sig = localStorage.getItem(SIGNATURE_KEY);
+    state.sigHasInk = Boolean(sig);
+  }catch(e){}
+}
+
+function resetAll(){
+  Object.keys(state.data).forEach((key) => {
+    state.data[key] = typeof state.data[key] === "boolean" ? false : "";
+  });
+  state.index = 0;
+  state.sigHasInk = false;
+  try{
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(SIGNATURE_KEY);
+  }catch(e){}
+  render();
+}
+
+function render(){
+  const list = visibleSteps();
+  const step = currentStep();
+  animateCari(step);
+  document.querySelector(".flow-panel")?.classList.toggle("is-start", step.id === "welcome");
+  const position = state.index + 1;
+  $("stepKicker").textContent = step.kicker;
+  $("stepTitle").textContent = step.title;
+  $("stepPrompt").textContent = step.prompt;
+  $("cariMood").textContent = step.mood;
+  $("cariSpeech").textContent = step.speech;
+  $("progressText").textContent = `${position} von ${list.length}`;
+  $("progressBar").style.width = `${Math.round((position / list.length) * 100)}%`;
+  btnBack.disabled = state.index === 0;
+  btnNext.textContent = step.nextLabel || "Weiter";
+
+  answerArea.innerHTML = "";
+  answerArea.dataset.step = step.id;
+
+  if (step.type === "intro") renderIntro();
+  if (step.type === "fields") renderFields(step);
+  if (step.type === "multi") renderMulti(step);
+  if (step.type === "single") renderSingle(step);
+  if (step.type === "signature") renderSignature();
+  if (step.type === "review") renderReview();
+  renderSummary();
+}
+
+function animateCari(step){
+  const stage = document.querySelector(".cari-stage");
+  if (!stage) return;
+  stage.classList.remove("is-nod", "is-happy", "is-welcome");
+  void stage.offsetWidth;
+  if (step.id === "welcome") stage.classList.add("is-welcome");
+  else stage.classList.add(step.id === "review" ? "is-happy" : "is-nod");
+}
+
+function renderIntro(){
+  const card = document.createElement("div");
+  card.className = "start-card";
+  card.innerHTML = `
+    <p class="start-card__line">Pflegepraktikum</p>
+    <p class="start-card__line">Ausbildung</p>
+    <p class="start-card__line">Weiterbildung</p>
+  `;
+  answerArea.append(card);
+}
+
+function renderFields(step){
+  const grid = document.createElement("div");
+  grid.className = `field-grid${step.single ? " field-grid--single" : ""}`;
+  step.fields.forEach((field) => {
+    const label = document.createElement("label");
+    label.className = "field";
+    const input = document.createElement(field.multiline ? "textarea" : "input");
+    input.id = field.key;
+    input.name = field.key;
+    input.value = state.data[field.key] || "";
+    input.placeholder = field.placeholder || "";
+    if (field.inputmode) input.inputMode = field.inputmode;
+    if (field.autocomplete) input.autocomplete = field.autocomplete;
+    input.addEventListener("input", () => {
+      state.data[field.key] = input.value;
+      saveDraft();
+      renderSummary();
+    });
+    label.innerHTML = `<span>${field.label}${field.required ? " *" : ""}</span>`;
+    label.append(input);
+    grid.append(label);
+  });
+  answerArea.append(grid);
+  const first = grid.querySelector("input,textarea");
+  window.setTimeout(() => first?.focus(), 80);
+}
+
+function renderMulti(step){
+  const grid = document.createElement("div");
+  grid.className = "choice-grid";
+  step.options.forEach((option) => {
+    const choice = createChoice({
+      label: option.label,
+      hint: option.hint,
+      selected: Boolean(state.data[option.key]),
+      onClick: () => {
+        state.data[option.key] = !state.data[option.key];
+        if (!state.data.i_ausbildung) state.data.ausbildungsziel = "";
+        if (!state.data.i_weiterbildung) state.data.weiterbildung_text = "";
+        saveDraft();
+        render();
+      }
+    });
+    grid.append(choice);
+  });
+  answerArea.append(grid);
+}
+
+function renderSingle(step){
+  const grid = document.createElement("div");
+  grid.className = "choice-grid";
+  step.options.forEach((option) => {
+    const selected = state.data[step.key] === option.value;
+    const choice = createChoice({
+      label: option.label,
+      hint: option.hint,
+      selected,
+      onClick: () => {
+        state.data[step.key] = option.value;
+        saveDraft();
+        render();
+      }
+    });
+    grid.append(choice);
+  });
+  answerArea.append(grid);
+}
+
+function createChoice({label, hint, selected, onClick}){
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `choice${selected ? " is-selected" : ""}`;
+  button.innerHTML = `
+    <span class="choice__mark" aria-hidden="true"></span>
+    <span class="choice__body"><strong>${escapeHtml(label)}</strong><small>${escapeHtml(hint || "")}</small></span>
+  `;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderSignature(){
+  const box = document.createElement("div");
+  box.className = "signature-box";
+  box.innerHTML = `
+    <div class="sig-wrap"><canvas id="sigCanvas" aria-label="Unterschrift"></canvas></div>
+    <div class="signature-actions"><button class="btn btn--quiet" id="clearSig" type="button">Unterschrift löschen</button></div>
+  `;
+  answerArea.append(box);
+  state.sigCanvas = $("sigCanvas");
+  $("clearSig").addEventListener("click", clearSignature);
+  setupSignatureCanvas();
+}
+
+function setupSignatureCanvas(){
+  const canvas = state.sigCanvas;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(rect.width * dpr));
+  canvas.height = Math.max(1, Math.round(rect.height * dpr));
+  state.sigCtx = canvas.getContext("2d");
+  state.sigCtx.scale(dpr, dpr);
+  state.sigCtx.lineWidth = 3;
+  state.sigCtx.lineCap = "round";
+  state.sigCtx.lineJoin = "round";
+  state.sigCtx.strokeStyle = "#141414";
+  restoreSignature();
+
+  canvas.addEventListener("pointerdown", startSignature);
+  canvas.addEventListener("pointermove", moveSignature);
+  window.addEventListener("pointerup", endSignature);
+  window.addEventListener("pointercancel", endSignature);
+}
+
+function pointFromEvent(evt){
+  const rect = state.sigCanvas.getBoundingClientRect();
+  return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+}
+
+function startSignature(evt){
+  state.drawing = true;
+  const p = pointFromEvent(evt);
+  state.lastPoint = p;
+  state.sigCtx.beginPath();
+  state.sigCtx.moveTo(p.x, p.y);
+  evt.preventDefault();
+}
+
+function moveSignature(evt){
+  if (!state.drawing) return;
+  const p = pointFromEvent(evt);
+  state.sigCtx.lineTo(p.x, p.y);
+  state.sigCtx.stroke();
+  state.lastPoint = p;
+  state.sigHasInk = true;
+  evt.preventDefault();
+}
+
+function endSignature(){
+  if (!state.drawing) return;
+  state.drawing = false;
+  saveSignature();
+}
+
+function saveSignature(){
+  try{
+    localStorage.setItem(SIGNATURE_KEY, state.sigCanvas.toDataURL("image/png"));
+  }catch(e){}
+}
+
+function restoreSignature(){
+  let dataUrl = "";
+  try{ dataUrl = localStorage.getItem(SIGNATURE_KEY) || ""; }catch(e){}
+  if (!dataUrl) return;
+  const img = new Image();
+  img.onload = () => {
+    const rect = state.sigCanvas.getBoundingClientRect();
+    state.sigCtx.clearRect(0, 0, rect.width, rect.height);
+    state.sigCtx.drawImage(img, 0, 0, rect.width, rect.height);
+    state.sigHasInk = true;
+  };
+  img.src = dataUrl;
+}
+
+function clearSignature(){
+  if (!state.sigCtx || !state.sigCanvas) return;
+  const rect = state.sigCanvas.getBoundingClientRect();
+  state.sigCtx.clearRect(0, 0, rect.width, rect.height);
+  state.sigHasInk = false;
+  try{ localStorage.removeItem(SIGNATURE_KEY); }catch(e){}
+}
+
+function renderReview(){
+  const grid = document.createElement("dl");
+  grid.className = "review-grid";
+  getSummaryItems(true).forEach(([label, value]) => {
+    const item = document.createElement("div");
+    item.className = "review-item";
+    item.innerHTML = `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd>`;
+    grid.append(item);
+  });
+  answerArea.append(grid);
+}
+
+function renderSummary(){
+  const list = $("summaryList");
+  if (!list) return;
+  list.innerHTML = "";
+  getSummaryItems(false).forEach(([label, value]) => {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "Offen")}</dd>`;
+    list.append(wrap);
+  });
+}
+
+function getSummaryItems(full){
+  const interest = [
+    state.data.i_praktikum ? "Praktikum" : "",
+    state.data.i_ausbildung ? "Ausbildung" : "",
+    state.data.i_weiterbildung ? "Weiterbildung" : ""
+  ].filter(Boolean).join(", ");
+  const base = [
+    ["Name", `${state.data.vorname} ${state.data.nachname}`.trim()],
+    ["Kontakt", [state.data.telefon, state.data.email].filter(Boolean).join(" / ")],
+    ["Ort", [state.data.plz, state.data.ort].filter(Boolean).join(" ")],
+    ["Interesse", interest],
+    ["Ausbildungsziel", state.data.ausbildungsziel],
+    ["Termin", [state.data.termin_datum, state.data.termin_uhr].filter(Boolean).join(", ")]
+  ];
+  if (!full) return base;
+  return [
+    ...base,
+    ["Adresse", [state.data.strasse, state.data.hausnr].filter(Boolean).join(" ")],
+    ["Geburtsdatum", state.data.gebdatum],
+    ["Schulabschluss", state.data.abschluss],
+    ["Bisherige Ausbildung", state.data.ausbildung],
+    ["Berufserfahrung", state.data.beruf],
+    ["Weiterbildung", state.data.weiterbildung_text],
+    ["Berater/in", state.data.berater],
+    ["Datenschutz", state.data.ds_ack ? "akzeptiert" : ""],
+    ["Unterschrift", state.sigHasInk ? "vorhanden" : ""]
+  ];
+}
+
+function validateCurrent(){
+  const step = currentStep();
+  if (step.fields){
+    const missing = step.fields.filter((field) => field.required && !String(state.data[field.key] || "").trim());
+    if (missing.length){
+      alert(`Bitte ergänze: ${missing.map((field) => field.label).join(", ")}`);
+      return false;
+    }
+  }
+  if (step.validate && !step.validate()){
+    alert(step.error || "Bitte ergänze diesen Schritt.");
+    return false;
+  }
+  return true;
+}
+
+function goNext(){
+  const step = currentStep();
+  if (!validateCurrent()) return;
+  if (step.id === "review"){
+    downloadPdf();
+    return;
+  }
+  state.index = Math.min(state.index + 1, visibleSteps().length - 1);
+  render();
+}
+
+function goBack(){
+  state.index = Math.max(0, state.index - 1);
+  render();
+}
+
+function pad2(n){ return String(n).padStart(2, "0"); }
+function todayIso(){
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
+}
+
+function safeNamePart(value){
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^\wäöüÄÖÜß-]/g, "");
+}
+
+function pdfFileName(){
+  const base = [safeNamePart(state.data.nachname), safeNamePart(state.data.vorname), todayIso()].filter(Boolean).join("_");
+  return `${base || `Beratungsbogen_${todayIso()}`}.pdf`;
+}
+
+function getSignatureJpeg(){
+  let dataUrl = "";
+  try{ dataUrl = localStorage.getItem(SIGNATURE_KEY) || ""; }catch(e){}
+  if (!dataUrl) return null;
+  const source = new Image();
+  const canvas = document.createElement("canvas");
+  canvas.width = state.sigCanvas?.width || 900;
+  canvas.height = state.sigCanvas?.height || 320;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  return new Promise((resolve) => {
+    source.onload = () => {
+      ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+      resolve({
+        dataUrl: canvas.toDataURL("image/jpeg", .88),
+        width: canvas.width,
+        height: canvas.height
+      });
+    };
+    source.onerror = () => resolve(null);
+    source.src = dataUrl;
+  });
+}
+
+async function downloadPdf(){
+  const signature = await getSignatureJpeg();
+  const bytes = createPdfBytes(state.data, signature);
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = pdfFileName();
+  document.body.append(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+  toast.classList.add("is-open");
+}
+
+function createPdfBytes(data, signature){
+  const content = new PdfContent();
+  content.rect(0, 790, 595, 52, "0.94 0.50 0.61");
+  content.text(40, 819, 22, "BERATUNGSBOGEN");
+  content.text(40, 801, 10, "Für Interessenten an einem Pflegepraktikum / einer Pflegeausbildung");
+  content.text(430, 817, 12, `Datum: ${formatDate(new Date())}`);
+
+  let y = 760;
+  y = section(content, y, "Kontaktdaten");
+  y = row(content, y, "Vorname", data.vorname, "Nachname", data.nachname);
+  y = row(content, y, "Straße", data.strasse, "Hausnummer", data.hausnr);
+  y = row(content, y, "PLZ / Ort", [data.plz, data.ort].filter(Boolean).join(" "), "Geburtsdatum", data.gebdatum);
+  y = row(content, y, "Telefon", data.telefon, "E-Mail", data.email);
+
+  y -= 6;
+  y = section(content, y, "Interesse");
+  const interest = [
+    data.i_praktikum ? "Praktikum" : "",
+    data.i_ausbildung ? "Ausbildung" : "",
+    data.i_weiterbildung ? "Weiterbildung" : ""
+  ].filter(Boolean).join(", ");
+  y = fullRow(content, y, "Interesse an", interest);
+  y = fullRow(content, y, "Ausbildungsziel", data.ausbildungsziel);
+  y = fullRow(content, y, "Weiterbildung", data.weiterbildung_text);
+
+  y -= 6;
+  y = section(content, y, "Werdegang");
+  y = fullRow(content, y, "Schulabschluss", data.abschluss);
+  y = fullRow(content, y, "Bisherige Ausbildung", data.ausbildung);
+  y = fullRow(content, y, "Berufserfahrung", data.beruf);
+
+  y -= 6;
+  y = section(content, y, "Persönlicher Beratungstermin");
+  y = row(content, y, "Datum", data.termin_datum, "Uhrzeit", data.termin_uhr);
+  y = fullRow(content, y, "Berater/in", data.berater);
+
+  y -= 4;
+  y = section(content, y, "Datenschutz");
+  content.text(40, y, 10, "Die personenbezogenen Daten werden ausschließlich für Beratung und Kontaktaufnahme verwendet.");
+  y -= 18;
+  content.text(40, y, 10, `Datenschutzrechte gemäß Kapitel III (Art. 12 ff.) der DS-GVO akzeptiert: ${data.ds_ack ? "Ja" : "Nein"}`);
+
+  content.line(40, 112, 210, 112);
+  content.text(40, 95, 10, `Datum: ${formatDate(new Date())}`);
+  content.line(330, 112, 545, 112);
+  content.text(330, 95, 10, "Unterschrift");
+  if (signature) content.image("Sig", 342, 120, 190, 62);
+
+  const contentBytes = content.bytes();
+  const hasImage = Boolean(signature);
+  const objects = [];
+  objects[1] = ascii("<< /Type /Catalog /Pages 2 0 R >>");
+  objects[2] = ascii("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  objects[3] = ascii(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >>${hasImage ? " /XObject << /Sig 6 0 R >>" : ""} >> /Contents 5 0 R >>`);
+  objects[4] = ascii("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
+  objects[5] = streamObject(contentBytes);
+  if (hasImage){
+    const imageBytes = dataUrlBytes(signature.dataUrl);
+    objects[6] = streamObject(imageBytes, `<< /Type /XObject /Subtype /Image /Width ${signature.width} /Height ${signature.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>`);
+  }
+  return buildPdf(objects);
+}
+
+function section(content, y, label){
+  content.text(40, y, 13, label.toUpperCase());
+  content.line(40, y - 5, 545, y - 5);
+  return y - 26;
+}
+
+function row(content, y, l1, v1, l2, v2){
+  content.text(40, y, 9, l1);
+  content.text(128, y, 12, v1 || "");
+  content.line(126, y - 4, 285, y - 4);
+  content.text(315, y, 9, l2);
+  content.text(405, y, 12, v2 || "");
+  content.line(402, y - 4, 545, y - 4);
+  return y - 25;
+}
+
+function fullRow(content, y, label, value){
+  content.text(40, y, 9, label);
+  const lines = wrapText(value || "", 70);
+  lines.slice(0, 2).forEach((line, index) => content.text(162, y - (index * 14), 12, line));
+  content.line(160, y - 4, 545, y - 4);
+  return y - (lines.length > 1 ? 36 : 25);
+}
+
+function wrapText(text, max){
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length > max && line){
+      lines.push(line);
+      line = word;
+    }else{
+      line = next;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+function formatDate(date){
+  return `${pad2(date.getDate())}.${pad2(date.getMonth()+1)}.${date.getFullYear()}`;
+}
+
+class PdfContent{
+  constructor(){ this.parts = []; }
+  raw(value){ this.parts.push(ascii(value)); }
+  text(x, y, size, value){
+    this.raw(`BT /F1 ${size} Tf 1 0 0 1 ${x} ${y} Tm `);
+    this.parts.push(pdfString(value));
+    this.raw(" Tj ET\n");
+  }
+  line(x1, y1, x2, y2){
+    this.raw(`0.74 0.77 0.82 RG 1.1 w ${x1} ${y1} m ${x2} ${y2} l S\n`);
+  }
+  rect(x, y, w, h, rgb){
+    this.raw(`q ${rgb} rg ${x} ${y} ${w} ${h} re f Q\n`);
+  }
+  image(name, x, y, w, h){
+    this.raw(`q ${w} 0 0 ${h} ${x} ${y} cm /${name} Do Q\n`);
+  }
+  bytes(){ return concat(this.parts); }
+}
+
+function ascii(str){
+  const bytes = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) bytes[i] = str.charCodeAt(i) & 0xff;
+  return bytes;
+}
+
+function pdfString(value){
+  const bytes = [40];
+  for (const char of String(value || "")){
+    const code = winAnsi(char);
+    if (code === 40 || code === 41 || code === 92) bytes.push(92);
+    bytes.push(code);
+  }
+  bytes.push(41);
+  return new Uint8Array(bytes);
+}
+
+function winAnsi(char){
+  const map = {
+    "Ä":196, "Ö":214, "Ü":220, "ä":228, "ö":246, "ü":252, "ß":223,
+    "–":150, "—":151, "„":132, "“":147, "”":148, "’":146, "€":128
+  };
+  if (map[char]) return map[char];
+  const code = char.charCodeAt(0);
+  if (code >= 32 && code <= 126) return code;
+  return 63;
+}
+
+function streamObject(bytes, dict){
+  const head = dict || `<< /Length ${bytes.length} >>`;
+  return concat([ascii(`${head}\nstream\n`), bytes, ascii("\nendstream")]);
+}
+
+function dataUrlBytes(dataUrl){
+  const base64 = dataUrl.split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function buildPdf(objects){
+  const chunks = [ascii("%PDF-1.4\n")];
+  const offsets = [0];
+  let offset = chunks[0].length;
+  for (let i = 1; i < objects.length; i++){
+    if (!objects[i]) continue;
+    offsets[i] = offset;
+    const obj = concat([ascii(`${i} 0 obj\n`), objects[i], ascii("\nendobj\n")]);
+    chunks.push(obj);
+    offset += obj.length;
+  }
+  const xrefOffset = offset;
+  const count = objects.length;
+  let xref = `xref\n0 ${count}\n0000000000 65535 f \n`;
+  for (let i = 1; i < count; i++){
+    xref += `${String(offsets[i] || 0).padStart(10, "0")} 00000 n \n`;
+  }
+  xref += `trailer\n<< /Size ${count} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  chunks.push(ascii(xref));
+  return concat(chunks);
+}
+
+function concat(arrays){
+  const total = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  arrays.forEach((arr) => {
+    out.set(arr, offset);
+    offset += arr.length;
+  });
+  return out;
+}
+
+function escapeHtml(value){
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+btnNext.addEventListener("click", goNext);
+btnBack.addEventListener("click", goBack);
+toastOk.addEventListener("click", () => {
+  toast.classList.remove("is-open");
+  resetAll();
+});
+
+loadDraft();
+render();
+
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
+}

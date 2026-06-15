@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#ef7f9b" />
+  <title>Cari Beratungstermin</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <link rel="stylesheet" href="styles.css?v=13" />
+</head>
+<body>
+  <main class="kiosk-shell">
+    <section class="flow-panel" aria-label="Geführtes Formular">
+      <header class="flow-hero">
+        <div class="brand">
+          <div>
+            <p class="eyebrow">Beratungstermin vereinbaren</p>
+          
+          </div>
+          <img src="assets/logo.png" alt="Aschke" class="brand__logo" />
+        </div>
+
+        <div class="cari-row">
+          <div class="cari-stage" aria-hidden="true">
+            <span class="pulse pulse--one"></span>
+            <span class="pulse pulse--two"></span>
+            <div class="cari-wrap">
+              <div class="cari-lid cari-lid--left"></div>
+              <div class="cari-lid cari-lid--right"></div>
+              <img src="assets/cari.png" alt="" class="cari" />
+            </div>
+          </div>
+
+          <div class="speech-card">
+            <p id="cariMood" class="speech-card__label">Hallo, ich bin Cari.</p>
+            <p id="cariSpeech" class="speech-card__text"></p>
+            <div class="voice-dots" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="topbar">
+        <div>
+          <p id="stepKicker" class="kicker"></p>
+          <h2 id="stepTitle"></h2>
+        </div>
+        <output id="progressText" class="progress-text" aria-live="polite"></output>
+      </div>
+
+      <div class="progress-track" aria-hidden="true">
+        <div id="progressBar" class="progress-track__bar"></div>
+      </div>
+
+      <p id="stepPrompt" class="prompt"></p>
+      <form id="answerArea" class="answer-area" autocomplete="on"></form>
+
+      <footer class="nav-row">
+        <button id="btnBack" class="btn btn--ghost" type="button">Zurück</button>
+        <button id="btnNext" class="btn btn--primary" type="button">Weiter</button>
+      </footer>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="dialog" aria-modal="true" aria-labelledby="toastTitle">
+    <div class="toast__box">
+      <p id="toastTitle" class="toast__title">PDF wurde vorbereitet</p>
+      <p class="toast__text">Der Download/Speichern-Dialog wurde gestartet. Danach kann direkt der nächste Messegast erfasst werden.</p>
+      <button id="toastOk" class="btn btn--primary" type="button">Nächster Messegast</button>
+    </div>
+  </div>
+
+  <script src="app.js?v=13"></script>
+</body>
+</html>

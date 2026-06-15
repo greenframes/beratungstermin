@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Cari – Lid-Positionierer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:system-ui,sans-serif;
+      background:#f7f0f5;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:28px 20px 48px;
+      min-height:100vh;
+      gap:20px;
+    }
+    h1{font-size:18px;color:#45464a;font-weight:800}
+    .subtitle{font-size:13px;color:#999;margin-top:2px;text-align:center}
+
+    .mode-bar{display:flex;gap:8px}
+    .mode-bar button{
+      padding:8px 18px;border-radius:8px;
+      border:2px solid #ef7f9b;background:#fff;
+      cursor:pointer;font-weight:800;font-size:13px;color:#ef7f9b;
+    }
+    .mode-bar button.active{background:#ef7f9b;color:#fff}
+
+    #stage{
+      background:linear-gradient(135deg,#fdf6f5,#f8edf0);
+      border-radius:20px;
+      display:grid;
+      place-items:center;
+      box-shadow:0 12px 32px rgba(0,0,0,.12);
+      padding:16px;
+    }
+    #cariWrap{
+      position:relative;
+      display:inline-block;
+    }
+    #cariImg{
+      display:block;width:100%;height:auto;
+      pointer-events:none;user-select:none;
+    }
+
+    .lid{
+      position:absolute;z-index:10;
+      border-radius:54% 54% 48% 48%;
+      background:linear-gradient(180deg,#fff8ff 0%,#f4e2f6 72%,#eecfea 100%);
+      box-shadow:0 2px 6px rgba(121,75,145,.14) inset,0 2px 0 rgba(139,90,150,.10);
+      cursor:grab;
+      touch-action:none;
+    }
+    .lid:active{cursor:grabbing}
+    /* active lid gets a visible ring */
+    .lid.is-active{ outline:2px solid #ef7f9b; outline-offset:2px; }
+    /* inactive lid gets a dashed ring */
+    .lid { outline:2px dashed rgba(239,127,155,.5); outline-offset:1px; }
+
+    .resize-dot{
+      position:absolute;bottom:-7px;right:-7px;
+      width:16px;height:16px;
+      background:#ef7f9b;border:2px solid #fff;
+      border-radius:50%;cursor:se-resize;touch-action:none;z-index:20;
+    }
+
+    #cariWrap.anim-float{animation:cariFloat 3.8s ease-in-out infinite;}
+    @keyframes cariFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+
+    /* Panels side-by-side on wide screens */
+    .panels{
+      display:flex;
+      flex-wrap:wrap;
+      gap:14px;
+      width:min(100%,640px);
+    }
+    .panel{
+      background:#fff;border-radius:16px;
+      padding:18px 20px;
+      box-shadow:0 4px 18px rgba(0,0,0,.08);
+      display:flex;flex-direction:column;gap:12px;
+      flex:1;min-width:260px;
+    }
+    .panel-title{
+      font-size:13px;font-weight:900;
+      letter-spacing:.04em;text-transform:uppercase;
+      padding:4px 10px;border-radius:6px;
+    }
+    .panel-title.left{ background:#fde8ef;color:#9c2f4c; }
+    .panel-title.right{ background:#e8f4fd;color:#2f6a9c; }
+
+    .row{display:flex;align-items:center;gap:10px}
+    .row label{font-size:12px;font-weight:700;color:#666;width:60px;flex-shrink:0}
+    .row input[type=range]{flex:1;accent-color:#ef7f9b}
+    .row .num{font-size:12px;font-weight:800;color:#333;width:46px;text-align:right}
+
+    .sep{height:1px;background:#f0e8ec}
+    .check-row{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:700;color:#666;cursor:pointer}
+    .check-row input{accent-color:#ef7f9b;width:16px;height:16px}
+
+    .output-wrap{width:min(100%,640px)}
+    .output{
+      background:#fdf0f4;border-radius:10px;
+      padding:14px 16px;
+      font-family:monospace;font-size:12px;line-height:1.9;
+      white-space:pre;color:#45464a;
+      border:1px solid #f0d8e0;
+      overflow:auto;
+    }
+    .bottom-row{
+      display:flex;align-items:center;gap:14px;
+      width:min(100%,640px);
+      flex-wrap:wrap;
+    }
+    .copy-btn{
+      padding:12px 24px;border-radius:10px;border:none;
+      background:#ef7f9b;color:#fff;
+      font-size:14px;font-weight:800;cursor:pointer;
+    }
+    .copy-btn:active{opacity:.8}
+    #feedback{font-size:13px;font-weight:700;color:#4ab3a8;}
+    .hint{font-size:12px;color:#bbb;text-align:center}
+  </style>
+</head>
+<body>
+
+<div style="text-align:center">
+  <h1>Cari Lid-Positionierer</h1>
+  <p class="subtitle">Jedes Lid vollständig unabhängig positionierbar<br>Ziehen = verschieben · Ecke ziehen = Größe · Klick = auswählen</p>
+</div>
+
+<div class="mode-bar">
+  <button id="btnStart" class="active">Start-Modus (250 px)</button>
+  <button id="btnNormal">Normal (176 px)</button>
+</div>
+
+<div id="stage">
+  <div id="cariWrap">
+    <img src="assets/cari.png" id="cariImg" draggable="false" alt="">
+    <div class="lid is-active" id="lidLeft"><div class="resize-dot" data-side="left"></div></div>
+    <div class="lid" id="lidRight"><div class="resize-dot" data-side="right"></div></div>
+  </div>
+</div>
+
+<label class="check-row">
+  <input type="checkbox" id="chkFloat"> Float-Animation (Schweben vorschau)
+</label>
+
+<div class="panels">
+  <!-- LEFT LID -->
+  <div class="panel">
+    <div class="panel-title left">Linkes Lid</div>
+    <div class="row">
+      <label>X (links)</label>
+      <input type="range" id="sldLX" min="0" max="100" step="0.1">
+      <span class="num" id="lxNum">—</span>
+    </div>
+    <div class="row">
+      <label>Y (oben)</label>
+      <input type="range" id="sldLY" min="0" max="100" step="0.1">
+      <span class="num" id="lyNum">—</span>
+    </div>
+    <div class="row">
+      <label>Breite</label>
+      <input type="range" id="sldLW" min="4" max="120" step="1">
+      <span class="num" id="lwNum">—</span>
+    </div>
+    <div class="row">
+      <label>Höhe</label>
+      <input type="range" id="sldLH" min="4" max="140" step="1">
+      <span class="num" id="lhNum">—</span>
+    </div>
+  </div>
+
+  <!-- RIGHT LID -->
+  <div class="panel">
+    <div class="panel-title right">Rechtes Lid</div>
+    <div class="row">
+      <label>X (links)</label>
+      <input type="range" id="sldRX" min="0" max="100" step="0.1">
+      <span class="num" id="rxNum">—</span>
+    </div>
+    <div class="row">
+      <label>Y (oben)</label>
+      <input type="range" id="sldRY" min="0" max="100" step="0.1">
+      <span class="num" id="ryNum">—</span>
+    </div>
+    <div class="row">
+      <label>Breite</label>
+      <input type="range" id="sldRW" min="4" max="120" step="1">
+      <span class="num" id="rwNum">—</span>
+    </div>
+    <div class="row">
+      <label>Höhe</label>
+      <input type="range" id="sldRH" min="4" max="140" step="1">
+      <span class="num" id="rhNum">—</span>
+    </div>
+  </div>
+</div>
+
+<div class="output-wrap">
+  <div class="output" id="output"></div>
+</div>
+<div class="bottom-row">
+  <button class="copy-btn" id="copyBtn">CSS kopieren</button>
+  <span id="feedback"></span>
+</div>
+
+<script>
+// ── Defaults per mode ─────────────────────────────────────────────────────────
+// x/y are % of image width/height (lid center)
+const MODES = {
+  start: {
+    cariW:250,
+    ll:{ x:37.2, y:36.4, w:36, h:38 },
+    rl:{ x:62.8, y:36.4, w:36, h:38 }
+  },
+  normal: {
+    cariW:176,
+    ll:{ x:38.1, y:35.6, w:24, h:23 },
+    rl:{ x:61.9, y:35.6, w:24, h:23 }
+  }
+};
+
+let mode = 'start';
+// Working state — x/y in %, w/h in px, position = lid center
+let ll = { x:37.2, y:36.4, w:36, h:38 };
+let rl = { x:62.8, y:36.4, w:36, h:38 };
+
+const cariWrap = document.getElementById('cariWrap');
+const cariImg  = document.getElementById('cariImg');
+const elL      = document.getElementById('lidLeft');
+const elR      = document.getElementById('lidRight');
+const chkFloat = document.getElementById('chkFloat');
+
+const sldLX = document.getElementById('sldLX'), lxNum = document.getElementById('lxNum');
+const sldLY = document.getElementById('sldLY'), lyNum = document.getElementById('lyNum');
+const sldLW = document.getElementById('sldLW'), lwNum = document.getElementById('lwNum');
+const sldLH = document.getElementById('sldLH'), lhNum = document.getElementById('lhNum');
+const sldRX = document.getElementById('sldRX'), rxNum = document.getElementById('rxNum');
+const sldRY = document.getElementById('sldRY'), ryNum = document.getElementById('ryNum');
+const sldRW = document.getElementById('sldRW'), rwNum = document.getElementById('rwNum');
+const sldRH = document.getElementById('sldRH'), rhNum = document.getElementById('rhNum');
+
+function iw(){ return cariImg.offsetWidth  || 250; }
+function ih(){ return cariImg.offsetHeight || 250; }
+
+// Sync sliders from state
+function syncSliders(){
+  sldLX.value = ll.x; lxNum.textContent = ll.x.toFixed(1) + '%';
+  sldLY.value = ll.y; lyNum.textContent = ll.y.toFixed(1) + '%';
+  sldLW.value = ll.w; lwNum.textContent = ll.w + 'px';
+  sldLH.value = ll.h; lhNum.textContent = ll.h + 'px';
+  sldRX.value = rl.x; rxNum.textContent = rl.x.toFixed(1) + '%';
+  sldRY.value = rl.y; ryNum.textContent = rl.y.toFixed(1) + '%';
+  sldRW.value = rl.w; rwNum.textContent = rl.w + 'px';
+  sldRH.value = rl.h; rhNum.textContent = rl.h + 'px';
+}
+
+// Render lids using % center positions
+function paint(){
+  const w = iw(), h = ih();
+  [[elL, ll],[elR, rl]].forEach(([el, s]) => {
+    const px = (s.x / 100) * w; // center x in px
+    const py = (s.y / 100) * h; // center y in px
+    el.style.left   = (px - s.w/2) + 'px';
+    el.style.top    = (py - s.h/2) + 'px';
+    el.style.width  = s.w + 'px';
+    el.style.height = s.h + 'px';
+  });
+  syncSliders();
+  updateOutput();
+}
+
+function updateOutput(){
+  const selector = mode === 'start' ? '.flow-panel.is-start' : '.flow-panel';
+  document.getElementById('output').textContent =
+    `/* ${selector} */\n` +
+    `--lid-left-x:  ${ll.x.toFixed(1)}%;\n` +
+    `--lid-left-y:  ${ll.y.toFixed(1)}%;\n` +
+    `--lid-left-w:  ${Math.round(ll.w)}px;\n` +
+    `--lid-left-h:  ${Math.round(ll.h)}px;\n` +
+    `--lid-right-x: ${rl.x.toFixed(1)}%;\n` +
+    `--lid-right-y: ${rl.y.toFixed(1)}%;\n` +
+    `--lid-right-w: ${Math.round(rl.w)}px;\n` +
+    `--lid-right-h: ${Math.round(rl.h)}px;`;
+}
+
+function applyMode(m){
+  mode = m;
+  const cfg = MODES[m];
+  cariImg.style.width = cfg.cariW + 'px';
+  Object.assign(ll, cfg.ll);
+  Object.assign(rl, cfg.rl);
+  requestAnimationFrame(paint);
+}
+
+// ── Drag (% based) ──────────────────────────────────────────────────────────
+let drag = null;
+function startDrag(e, state, el){
+  setActive(el);
+  const w = iw(), h = ih();
+  drag = {
+    state, el,
+    sx: e.clientX, sy: e.clientY,
+    ox: state.x,   oy: state.y,
+    iw: w, ih: h
+  };
+  el.setPointerCapture(e.pointerId);
+  e.preventDefault();
+}
+function moveDrag(e){
+  if(!drag) return;
+  drag.state.x = drag.ox + ((e.clientX - drag.sx) / drag.iw) * 100;
+  drag.state.y = drag.oy + ((e.clientY - drag.sy) / drag.ih) * 100;
+  drag.state.x = Math.max(0, Math.min(100, drag.state.x));
+  drag.state.y = Math.max(0, Math.min(100, drag.state.y));
+  paint();
+}
+function endDrag(){ drag = null; }
+
+elL.addEventListener('pointerdown', e => { if(e.target === elL) startDrag(e, ll, elL); });
+elR.addEventListener('pointerdown', e => { if(e.target === elR) startDrag(e, rl, elR); });
+elL.addEventListener('pointermove', moveDrag);
+elR.addEventListener('pointermove', moveDrag);
+elL.addEventListener('pointerup', endDrag);
+elR.addEventListener('pointerup', endDrag);
+
+// ── Active highlight ─────────────────────────────────────────────────────────
+function setActive(el){
+  [elL, elR].forEach(e => e.classList.remove('is-active'));
+  el.classList.add('is-active');
+}
+
+// ── Resize handles ───────────────────────────────────────────────────────────
+let resize = null;
+document.querySelectorAll('.resize-dot').forEach(dot => {
+  dot.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const s = dot.dataset.side === 'left' ? ll : rl;
+    const el = dot.dataset.side === 'left' ? elL : elR;
+    setActive(el);
+    resize = { s, sx: e.clientX, sy: e.clientY, ow: s.w, oh: s.h };
+    dot.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  dot.addEventListener('pointermove', e => {
+    if(!resize) return;
+    resize.s.w = Math.max(4, resize.ow + (e.clientX - resize.sx));
+    resize.s.h = Math.max(4, resize.oh + (e.clientY - resize.sy));
+    paint();
+  });
+  dot.addEventListener('pointerup', () => resize = null);
+});
+
+// ── Sliders → state ──────────────────────────────────────────────────────────
+sldLX.addEventListener('input', () => { ll.x = +sldLX.value; paint(); });
+sldLY.addEventListener('input', () => { ll.y = +sldLY.value; paint(); });
+sldLW.addEventListener('input', () => { ll.w = +sldLW.value; paint(); });
+sldLH.addEventListener('input', () => { ll.h = +sldLH.value; paint(); });
+sldRX.addEventListener('input', () => { rl.x = +sldRX.value; paint(); });
+sldRY.addEventListener('input', () => { rl.y = +sldRY.value; paint(); });
+sldRW.addEventListener('input', () => { rl.w = +sldRW.value; paint(); });
+sldRH.addEventListener('input', () => { rl.h = +sldRH.value; paint(); });
+
+// ── Float preview ────────────────────────────────────────────────────────────
+chkFloat.addEventListener('change', () => {
+  cariWrap.classList.toggle('anim-float', chkFloat.checked);
+});
+
+// ── Mode buttons ─────────────────────────────────────────────────────────────
+document.getElementById('btnStart').addEventListener('click', () => {
+  document.getElementById('btnStart').classList.add('active');
+  document.getElementById('btnNormal').classList.remove('active');
+  applyMode('start');
+});
+document.getElementById('btnNormal').addEventListener('click', () => {
+  document.getElementById('btnNormal').classList.add('active');
+  document.getElementById('btnStart').classList.remove('active');
+  applyMode('normal');
+});
+
+// ── Copy ─────────────────────────────────────────────────────────────────────
+document.getElementById('copyBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('output').textContent).then(() => {
+    const fb = document.getElementById('feedback');
+    fb.textContent = '✓ Kopiert!';
+    setTimeout(() => fb.textContent = '', 2500);
+  });
+});
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+cariImg.addEventListener('load', () => applyMode('start'));
+if(cariImg.complete) applyMode('start');
+</script>
+</body>
+</html>
